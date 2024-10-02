@@ -10,7 +10,7 @@ dependencies = [
   "xarray",
   "scikit-image",
   "astropy-healpix",
-  "gmt"
+  "pygmt"
 ]
 requires-python = ">=3.8"
 authors = [
