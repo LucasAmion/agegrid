@@ -38,7 +38,7 @@ import gprm.utils.paleogeography as pg
 from gprm.utils.spatial import rasterise_polygons, get_merged_cob_terrane_polygons, get_merged_cob_terrane_raster
 from gprm.utils.fileio import load_netcdf, write_netcdf_grid, write_xyz_file
 
-import reconstruct_by_topologies as rbt
+from . import reconstruct_by_topologies as rbt
 
 import ptt.separate_ridge_transform_segments as separate_ridge_transform_segments
 
@@ -57,17 +57,6 @@ def get_input_parameters(config_file):
         params = yaml.load(stream, Loader=yaml.FullLoader)
 
         print('Reading parameter file {:s}'.format(config_file))
-
-        input_rotation_filenames = []
-        for filename in params['InputFiles']['input_rotation_filenames']:
-            input_rotation_filenames.append('{:s}/{:s}'.format(params['InputFiles']['MODELDIR'],filename))
-
-        topology_features = []
-        for filename in params['InputFiles']['topology_features']:
-            topology_features.append('{:s}/{:s}'.format(params['InputFiles']['MODELDIR'],filename))
-
-        COBterrane_file = '{:s}/{:s}'.format(params['InputFiles']['MODELDIR'],
-                                             params['InputFiles']['COBterrane_file'])
 
         # name of output directories
         #seedpoints_output_dir = params['OutputFiles']['seedpoints_output_dir']
@@ -107,8 +96,7 @@ def get_input_parameters(config_file):
         else:
             backend='v2'
 
-    return (input_rotation_filenames, topology_features, COBterrane_file,
-            grd_output_dir, output_gridfile_template,
+    return (grd_output_dir, output_gridfile_template,
             min_time, max_time, mor_time_step, gridding_time_step, ridge_sampling,
             initial_ocean_healpix_sampling, initial_ocean_mean_spreading_rate, area_threshold,
             grdspace, xmin, xmax, ymin, ymax, region, grid_masking, num_cpus, backend)

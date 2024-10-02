@@ -1,25 +1,15 @@
 #####################################
-InputFiles:
-    MODELDIR: './input_files/Matthews++2016/'
-    input_rotation_filenames:
-        - 'Matthews_etal_GPC_2016_410-0Ma_GK07.rot'
-    topology_features:
-        - 'Matthews_etal_GPC_2016_MesozoicCenozoic_PlateTopologies.gpmlz'
-        - 'Matthews_etal_GPC_2016_Paleozoic_PlateTopologies.gpmlz'
-
-    COBterrane_file: 'Global_EarthByte_GeeK07_COB_Terranes_Matthews_etal_MOD.gpml'
-
 # name of output directories
 OutputFiles:
-    grd_output_dir: "./grid_files/"
+    grd_output_dir: "./data/grid_files/"
     output_gridfile_template: 'M16_seafloor_age_'
 
 TimeParameters:
 # --- set parameters
-    min_time: 0.
+    min_time: 350.
     max_time: 410.
-    mor_time_step: 1.
-    gridding_time_step: 1.
+    mor_time_step: 2.
+    gridding_time_step: 2.
 
 # Distance in arc-degrees along ridges at which to tessellate lines to
 # create seed points
@@ -42,4 +32,4 @@ SpatialParameters:
 
     grid_masking: True
 
-num_cpus: 4
+num_cpus: 1

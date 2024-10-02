@@ -1,13 +1,8 @@
-import sys
-#import pygplates
 import os
-import numpy as np
+import sys
 from shutil import copy2
-import yaml
 
-
-
-import automatic_age_grid_seeding as aags
+from . import automatic_age_grid_seeding as aags
 
 print('All modules imported successfully')
 
@@ -15,24 +10,35 @@ print('All modules imported successfully')
 
 # Set the input parameters by pointing to a yaml file
 
-#config_file = "./config_M16a.yaml"
-#config_file = "./config_M1000-NNR.yaml"
-config_file = sys.argv[1]
+config_file = os.path.join(os.path.dirname(__file__), "default_config.yaml")
 
-def run_paleo_age_grids(config_file):
+def run_paleo_age_grids(model_name, time, project_path):
 
-    (input_rotation_filenames, topology_features, COBterrane_file,
-    grd_output_dir, output_gridfile_template,
+    (grd_output_dir, output_gridfile_template,
     min_time, max_time, mor_time_step, gridding_time_step, ridge_sampling,
     initial_ocean_healpix_sampling, initial_ocean_mean_spreading_rate, area_threshold,
     grdspace, xmin, xmax, ymin, ymax, region, grid_masking, num_cpus, backend) = aags.get_input_parameters(config_file)
 
-
-
+    min_time = time
+    dir=f'{project_path}/data/{model_name}/Rotations'
+    files=os.listdir(dir)
+    files.remove('.metadata.json')
+    input_rotation_filenames = [f'{dir}/{filename}' for filename in files]
+    dir=f'{project_path}/data/{model_name}/Topologies'
+    files=os.listdir(dir)
+    files.remove('.metadata.json')
+    topology_features = [f'{dir}/{filename}' for filename in files]
+    dir=f'{project_path}/data/{model_name}/COBs'
+    files=os.listdir(dir)
+    files.remove('.metadata.json')
+    COBterrane_file = [f'{dir}/{filename}' for filename in files]
+    COBterrane_file = COBterrane_file[0]
+    
+    output_gridfile_template = f'{model_name}_seafloor_age_'
+    
     print('Input parameter definition completed')
 
     subduction_collision_parameters = (5.0, 10.0)
-    #continent_mask_file_pattern = None
     continent_mask_file_pattern = '%s/masks/mask_{:0.1f}Ma.nc' % grd_output_dir
 
     seedpoints_output_dir = '{:s}/seedpoints/'.format(grd_output_dir)
@@ -83,9 +89,6 @@ def run_paleo_age_grids(config_file):
     #'''
 
     copy2(config_file, grd_output_dir)
-
-
-
 
 if __name__ == "__main__":
     
