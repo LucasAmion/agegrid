@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools >= 61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agegrid"
+version = "2024.0.0"
+dependencies = [
+  "numpy",
+  "xarray",
+  "scikit-image,
+  "astropy-healpix",
+  "gmt"
+]
+requires-python = ">=3.8"
+authors = [
+  {name = "Lucas Amion", email = "lamion@dcc.uchile.cl"},
+]
+maintainers = [
+  {name = "Lucas Amion", email = "lamion@dcc.uchile.cl"},
+]
+description = "Code for reconstructing seafloor age distributions from GPlates full-plate tectonic reconstructions."
+readme = "README.md"
+license = {file = "LICENSE"}
