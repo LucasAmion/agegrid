@@ -11,5 +11,4 @@ setup(
       "astropy-healpix",
       "pygmt"
     ],
-    py_modules=['run_paleo_age_grids', 'reconstruct_by_topologies', 'automatic_age_grid_seeding']
 )
