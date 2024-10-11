@@ -1,6 +1,5 @@
 import os
 import sys
-from shutil import copy2
 
 from . import automatic_age_grid_seeding as aags
 
@@ -12,7 +11,7 @@ print('All modules imported successfully')
 
 config_file = os.path.join(os.path.dirname(__file__), "default_config.yaml")
 
-def run_paleo_age_grids(model_name, time, project_path):
+def run_paleo_age_grids(model_name, time, project_path, logger):
 
     (grd_output_dir, output_gridfile_template,
     min_time, max_time, mor_time_step, gridding_time_step, ridge_sampling,
@@ -61,37 +60,36 @@ def run_paleo_age_grids(model_name, time, project_path):
     initial_ocean_seedpoint_filename = '{:s}/seedpoints/age_from_distance_to_mor_{:0.2f}Ma.gmt'.format(grd_output_dir, max_time)
     mor_seedpoint_filename = '{:s}/seedpoints/MOR_plus_one_merge_{:0.2f}_{:0.2f}.gmt'.format(grd_output_dir, min_time, max_time)
 
-    #'''
+    logger.info("Making masks.")
     aags.make_masking_grids(COBterrane_file, input_rotation_filenames, max_time, min_time, gridding_time_step,
                             grdspace, region, grd_output_dir, output_gridfile_template, num_cpus)
-    #'''
-
+    logger.progress += 10
+    
+    logger.info("Creating seed points for initial ocean at reconstruction start time.")
     aags.get_initial_ocean_seeds(topology_features, input_rotation_filenames, COBterrane_file, seedpoints_output_dir,
                                 max_time, initial_ocean_mean_spreading_rate, initial_ocean_healpix_sampling,
                                 area_threshold, mask_sampling=grdspace)
+    logger.progress += 10
 
-
+    logger.info("Generating seed points along mid ocean ridges.")
     aags.get_isochrons_from_topologies(topology_features, input_rotation_filenames, seedpoints_output_dir,
                                     max_time, min_time, mor_time_step, ridge_sampling, num_cpus=num_cpus)
-    #'''
-    #'''
+    logger.progress += 10
+    
+    logger.info("Assembling seed points and reconstructing by topologies.")
     aags.reconstruct_seeds(input_rotation_filenames, topology_features, seedpoints_output_dir,
                         mor_seedpoint_filename, initial_ocean_seedpoint_filename,
                         max_time, min_time, gridding_time_step, grd_output_dir,
                         subduction_collision_parameters=subduction_collision_parameters,
                         continent_mask_file_pattern=continent_mask_file_pattern, backend=backend)
-    #'''
+    logger.progress += 10
 
-
+    logger.info("Gridding and masking.")
     aags.make_grids_from_reconstructed_seeds(input_rotation_filenames, max_time, min_time, gridding_time_step,
                                             grdspace, region, grd_output_dir, output_gridfile_template,
                                             num_cpus=num_cpus, COBterrane_file=COBterrane_file)
-    #'''
-
-    copy2(config_file, grd_output_dir)
+    logger.progress += 10
 
 if __name__ == "__main__":
-    
     config_file = sys.argv[1]
     run_paleo_age_grids(config_file)
-
