@@ -209,7 +209,7 @@ def get_isochrons_for_ridge_snapshot_parallel(topology_features, rotation_filena
         return
 
     else:
-        Parallel(n_jobs=num_cpus)(delayed(get_isochrons_for_ridge_snapshot) \
+        Parallel(n_jobs=num_cpus, backend="threading")(delayed(get_isochrons_for_ridge_snapshot) \
                                   (topology_features, rotation_filename,
                                    out_dir, pool_ridge_time,
                                    time_step, youngest_seed_time, ridge_sampling)
@@ -746,7 +746,7 @@ def make_masking_grids(COBterrane_file, input_rotation_filenames, max_time, min_
 
     time_list = np.arange(max_time, min_time-time_step, -time_step)
 
-    Parallel(n_jobs=num_cpus)(delayed(make_masks_job) \
+    Parallel(n_jobs=num_cpus, backend="threading")(delayed(make_masks_job) \
                                 (reconstruction_time, COBterrane_file, input_rotation_filenames, 
                                 grdspace, grd_output_dir) \
                                 for reconstruction_time in time_list)
@@ -769,7 +769,7 @@ def make_grids_from_reconstructed_seeds(input_rotation_filenames, max_time, min_
     print('Begin Gridding....')
     if num_cpus>1:
         print('Running on {:d} cpus...'.format(num_cpus))
-        Parallel(n_jobs=num_cpus)(delayed(gridding_job) \
+        Parallel(n_jobs=num_cpus, backend="threading")(delayed(gridding_job) \
                                   (input_rotation_filenames, reconstruction_time,
                                    grdspace, region, grd_output_dir, output_gridfile_template,
                                    GridColumnFlag) \
@@ -786,12 +786,9 @@ def make_grids_from_reconstructed_seeds(input_rotation_filenames, max_time, min_
     print('Results saved in directory {:s}'.format(grd_output_dir))
 
     if COBterrane_file is not None:
-
-        print('Begin masking....')
-        Parallel(n_jobs=num_cpus)(delayed(masking_job) \
-                                  (reconstruction_time, region,
-                                   grd_output_dir, output_gridfile_template) \
-                                  for reconstruction_time in time_list)
+        for reconstruction_time in time_list:
+            masking_job(reconstruction_time, region,
+                                   grd_output_dir, output_gridfile_template)
 
     print('All done')
 
