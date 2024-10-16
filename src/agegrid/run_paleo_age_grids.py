@@ -1,46 +1,24 @@
 import os
-import sys
-
 from . import automatic_age_grid_seeding as aags
 
-print('All modules imported successfully')
+def run_paleo_age_grids(model_name, project_path, logger, max_time, min_time, time_step, sampling, 
+                        xmin, xmax, ymin, ymax, num_cpus):
+    ##########################################################
+    # Set the input parameters 
 
-##########################################################
-
-# Set the input parameters by pointing to a yaml file
-
-config_file = os.path.join(os.path.dirname(__file__), "default_config.yaml")
-
-def run_paleo_age_grids(model_name, time, project_path, logger):
-
-    (grd_output_dir, output_gridfile_template,
-    min_time, max_time, mor_time_step, gridding_time_step, ridge_sampling,
-    initial_ocean_healpix_sampling, initial_ocean_mean_spreading_rate, area_threshold,
-    grdspace, xmin, xmax, ymin, ymax, region, grid_masking, num_cpus, backend) = aags.get_input_parameters(config_file)
-
-    min_time = time
-    dir=f'{project_path}/data/{model_name}/Rotations'
-    files=os.listdir(dir)
-    files.remove('.metadata.json')
-    input_rotation_filenames = [f'{dir}/{filename}' for filename in files]
-    dir=f'{project_path}/data/{model_name}/Topologies'
-    files=os.listdir(dir)
-    files.remove('.metadata.json')
-    topology_features = [f'{dir}/{filename}' for filename in files]
-    dir=f'{project_path}/data/{model_name}/COBs'
-    files=os.listdir(dir)
-    files.remove('.metadata.json')
-    COBterrane_file = [f'{dir}/{filename}' for filename in files]
-    COBterrane_file = COBterrane_file[0]
+    # Input files
+    input_rotation_filenames = get_layer_files(project_path, model_name, 'Rotations')
+    topology_features = get_layer_files(project_path, model_name, 'Topologies')
+    COBterrane_file = get_layer_files(project_path, model_name, 'COBs')[0]
     
+    # Output files
     output_gridfile_template = f'{model_name}_seafloor_age_'
+    grd_output_dir = f'./data/grid_files/'
     
-    print('Input parameter definition completed')
-
-    subduction_collision_parameters = (5.0, 10.0)
     continent_mask_file_pattern = '%s/masks/mask_{:0.1f}Ma.nc' % grd_output_dir
-
     seedpoints_output_dir = '{:s}/seedpoints/'.format(grd_output_dir)
+    initial_ocean_seedpoint_filename = '{:s}/seedpoints/age_from_distance_to_mor_{:0.2f}Ma.gmt'.format(grd_output_dir, max_time)
+    mor_seedpoint_filename = '{:s}/seedpoints/MOR_plus_one_merge_{:0.2f}_{:0.2f}.gmt'.format(grd_output_dir, min_time, max_time)
 
     if not os.path.isdir(grd_output_dir):
         os.mkdir(grd_output_dir)
@@ -54,15 +32,28 @@ def run_paleo_age_grids(model_name, time, project_path, logger):
         os.mkdir('{0}/gridding_input/'.format(grd_output_dir))
     if not os.path.isdir('{0}/seedpoints/'.format(grd_output_dir)):
         os.mkdir('{0}/seedpoints/'.format(grd_output_dir))
+    
+    # Time parameters
+    max_time = float(max_time)
+    min_time = float(min_time)
+    gridding_time_step = mor_time_step = time_step
+    
+    # Spatial parameters
+    grdspace = ridge_sampling = sampling
+    region = [xmin, xmax, ymin, ymax]
+    initial_ocean_healpix_sampling = 32
+    area_threshold = 0.0001
+    
+    # Other
+    backend = 'v2'
+    initial_ocean_mean_spreading_rate = 75.
+    subduction_collision_parameters = (5.0, 10.0)
     ###################################################
-
-
-    initial_ocean_seedpoint_filename = '{:s}/seedpoints/age_from_distance_to_mor_{:0.2f}Ma.gmt'.format(grd_output_dir, max_time)
-    mor_seedpoint_filename = '{:s}/seedpoints/MOR_plus_one_merge_{:0.2f}_{:0.2f}.gmt'.format(grd_output_dir, min_time, max_time)
-
+    # Run the algorithm
+    
     logger.info("Making masks...")
     aags.make_masking_grids(COBterrane_file, input_rotation_filenames, max_time, min_time, gridding_time_step,
-                            grdspace, region, grd_output_dir, output_gridfile_template, num_cpus)
+                            grdspace, grd_output_dir, output_gridfile_template, num_cpus)
     logger.progress += 10
     
     logger.info("Creating seed points for initial ocean at reconstruction start time...")
@@ -90,6 +81,8 @@ def run_paleo_age_grids(model_name, time, project_path, logger):
                                             num_cpus=num_cpus, COBterrane_file=COBterrane_file)
     logger.progress += 10
 
-if __name__ == "__main__":
-    config_file = sys.argv[1]
-    run_paleo_age_grids(config_file)
+def get_layer_files(project_path, model_name, layer_name):
+    dir = f'{project_path}/data/{model_name}/{layer_name}'
+    files = os.listdir(dir)
+    files.remove('.metadata.json')
+    return [f'{dir}/{filename}' for filename in files]

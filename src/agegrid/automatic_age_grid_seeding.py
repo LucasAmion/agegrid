@@ -1,107 +1,19 @@
-
-"""
-    Copyright (C) 2017 The University of Sydney, Australia
-
-    This program is free software; you can redistribute it and/or modify it under
-    the terms of the GNU General Public License, version 2, as published by
-    the Free Software Foundation.
-
-    This program is distributed in the hope that it will be useful, but WITHOUT
-    ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-    FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
-    for more details.
-
-    You should have received a copy of the GNU General Public License along
-    with this program; if not, write to Free Software Foundation, Inc.,
-    51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
-"""
-
 import pygplates
 import numpy as np
-import pandas as pd
 import os
-import shutil
-#import multiprocessing
-import glob
 from ptt.utils.call_system_command import call_system_command
 import xarray as xr
 from joblib import Parallel, delayed
 import tempfile
-import yaml
 import pygmt
 
-import ptt.utils.points_spatial_tree as points_spatial_tree
-import ptt.utils.points_in_polygons as points_in_polygons
-
 import gprm.utils.paleogeography as pg
-#import gprm.utils.paleotopography as pt
-from gprm.utils.spatial import rasterise_polygons, get_merged_cob_terrane_polygons, get_merged_cob_terrane_raster
-from gprm.utils.fileio import load_netcdf, write_netcdf_grid, write_xyz_file
+from gprm.utils.spatial import get_merged_cob_terrane_polygons, get_merged_cob_terrane_raster
+from gprm.utils.fileio import write_xyz_file
 
 from . import reconstruct_by_topologies as rbt
 
 import ptt.separate_ridge_transform_segments as separate_ridge_transform_segments
-
-#
-# Code to automatically generate seafloor age grids from a topological plate reconstruction model
-#
-# Authors: Simon Williams, John Cannon, Nicky Wright
-#
-
-
-###########################################################
-# parameter definition
-def get_input_parameters(config_file):
-
-    with open(config_file, 'r') as stream:
-        params = yaml.load(stream, Loader=yaml.FullLoader)
-
-        print('Reading parameter file {:s}'.format(config_file))
-
-        # name of output directories
-        #seedpoints_output_dir = params['OutputFiles']['seedpoints_output_dir']
-        grd_output_dir = params['OutputFiles']['grd_output_dir']
-        output_gridfile_template = params['OutputFiles']['output_gridfile_template']
-
-        # --- set parameters
-        min_time = params['TimeParameters']['min_time']
-        max_time = params['TimeParameters']['max_time']
-        mor_time_step = params['TimeParameters']['mor_time_step']
-        gridding_time_step = params['TimeParameters']['gridding_time_step']
-
-        # Distance in arc-degrees along ridges at which to tessellate lines to
-        # create seed points
-        # BUT: does not desample the points where the original line geometries
-        # are already closer than the specified distance
-        ridge_sampling = params['SpatialParameters']['ridge_sampling']
-
-        initial_ocean_healpix_sampling = params['SpatialParameters']['initial_ocean_healpix_sampling']   # must be power 2 number
-        initial_ocean_mean_spreading_rate = params['SpatialParameters']['initial_ocean_mean_spreading_rate']
-
-        area_threshold = params['SpatialParameters']['area_threshold']  # used to remove small polygons in the masking. Units are area on unit sphere
-
-        # Control the gridding extent and resolution parameters passed to GMT
-        grdspace = params['SpatialParameters']['grdspace']  # in degrees
-        xmin = params['SpatialParameters']['xmin']
-        xmax = params['SpatialParameters']['xmax']
-        ymin = params['SpatialParameters']['ymin']
-        ymax = params['SpatialParameters']['ymax']
-        region = '{:0.6f}/{:0.6f}/{:0.6f}/{:0.6f}'.format(xmin,xmax,ymin,ymax)
-
-        grid_masking = params['SpatialParameters']['grid_masking']
-
-        num_cpus = params['num_cpus']
-        if 'reconstruction_backend' in params:
-            backend = params['reconstruction_backend']
-        else:
-            backend='v2'
-
-    return (grd_output_dir, output_gridfile_template,
-            min_time, max_time, mor_time_step, gridding_time_step, ridge_sampling,
-            initial_ocean_healpix_sampling, initial_ocean_mean_spreading_rate, area_threshold,
-            grdspace, xmin, xmax, ymin, ymax, region, grid_masking, num_cpus, backend)
-
-
 
 ###########################################################
 def get_mid_ocean_ridges(shared_boundary_sections,rotation_model,reconstruction_time,sampling=2.0):
@@ -646,6 +558,8 @@ def make_grid_for_reconstruction_time(raw_point_file, age_grid_time, grdspace, r
 
     block_median_points = tempfile.NamedTemporaryFile(delete=False)
     block_median_points.close()  # Cannot open twice on Windows - close before opening again.
+    
+    region = '{:0.6f}/{:0.6f}/{:0.6f}/{:0.6f}'.format(*region)
 
     call_system_command(['gmt',
                          'blockmedian',
@@ -740,7 +654,7 @@ def mask_synthetic_points(reconstructed_present_day_lons, reconstructed_present_
 
 
 def make_masking_grids(COBterrane_file, input_rotation_filenames, max_time, min_time, time_step,
-                       grdspace, region, grd_output_dir, output_gridfile_template, 
+                       grdspace, grd_output_dir, output_gridfile_template, 
                        num_cpus=1):
     # generate the binary masking grids to define which areas are oceanic and which continental
 
@@ -769,7 +683,7 @@ def make_grids_from_reconstructed_seeds(input_rotation_filenames, max_time, min_
     print('Begin Gridding....')
     if num_cpus>1:
         print('Running on {:d} cpus...'.format(num_cpus))
-        Parallel(n_jobs=num_cpus, prefer="threads")(delayed(gridding_job) \
+        Parallel(n_jobs=num_cpus, backend="threading")(delayed(gridding_job) \
                                   (input_rotation_filenames, reconstruction_time,
                                    grdspace, region, grd_output_dir, output_gridfile_template,
                                    GridColumnFlag) \
@@ -787,8 +701,7 @@ def make_grids_from_reconstructed_seeds(input_rotation_filenames, max_time, min_
 
     if COBterrane_file is not None:
         for reconstruction_time in time_list:
-            masking_job(reconstruction_time, region,
-                                   grd_output_dir, output_gridfile_template)
+            masking_job(reconstruction_time, region, grd_output_dir, output_gridfile_template)
 
     print('All done')
 
@@ -827,7 +740,7 @@ def masking_job(reconstruction_time, region,
         mask = xr.open_dataarray('{0}/masks/mask_{1}Ma.nc'.format(grd_output_dir, reconstruction_time))
     else:
         mask = pygmt.grdsample('{0}/masks/mask_{1}Ma.nc'.format(grd_output_dir, reconstruction_time), 
-                               region='{0}/unmasked/{1}{2}Ma.nc'.format(grd_output_dir, output_gridfile_template, reconstruction_time))
+                               region=region)
 
     ds = xr.open_dataarray('{0}/unmasked/{1}{2}Ma.nc'.format(grd_output_dir, output_gridfile_template, reconstruction_time))
 
@@ -849,7 +762,6 @@ def make_masks_job(reconstruction_time, COBterrane_file, input_rotation_filename
     print('Masking for time {:0.2f} Ma'.format(reconstruction_time))
     mask = get_merged_cob_terrane_raster(COBterrane_file, rotation_model, reconstruction_time,
                                          grdspace, method='rasterio')
-
 
     gridX = np.arange(-180.,180.+grdspace,grdspace)
     gridY = np.arange(-90.,90.+grdspace,grdspace)
