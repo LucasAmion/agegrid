@@ -1,19 +1,19 @@
 import os
 from . import automatic_age_grid_seeding as aags
 
-def run_paleo_age_grids(model_name, project_path, logger, max_time, min_time, time_step, sampling, 
+def run_paleo_age_grids(model_name, model_dir, temp_dir, logger, max_time, min_time, time_step, sampling, 
                         xmin, xmax, ymin, ymax, num_cpus):
     ##########################################################
     # Set the input parameters 
 
     # Input files
-    input_rotation_filenames = get_layer_files(project_path, model_name, 'Rotations')
-    topology_features = get_layer_files(project_path, model_name, 'Topologies')
-    COBterrane_file = get_layer_files(project_path, model_name, 'COBs')[0]
+    input_rotation_filenames = get_layer_files(model_dir, model_name, 'Rotations')
+    topology_features = get_layer_files(model_dir, model_name, 'Topologies')
+    COBterrane_file = get_layer_files(model_dir, model_name, 'COBs')[0]
     
     # Output files
     output_gridfile_template = f'{model_name}_seafloor_age_'
-    grd_output_dir = f'./data/grid_files/'
+    grd_output_dir = f'{temp_dir}/grid_files/'
     
     continent_mask_file_pattern = '%s/masks/mask_{:0.1f}Ma.nc' % grd_output_dir
     seedpoints_output_dir = '{:s}/seedpoints/'.format(grd_output_dir)
@@ -81,8 +81,8 @@ def run_paleo_age_grids(model_name, project_path, logger, max_time, min_time, ti
                                             num_cpus=num_cpus, COBterrane_file=COBterrane_file)
     logger.progress += 10
 
-def get_layer_files(project_path, model_name, layer_name):
-    dir = f'{project_path}/data/{model_name}/{layer_name}'
+def get_layer_files(model_dir, model_name, layer_name):
+    dir =  f'{model_dir}/{model_name}/{layer_name}'
     files = os.listdir(dir)
     files.remove('.metadata.json')
     return [f'{dir}/{filename}' for filename in files]

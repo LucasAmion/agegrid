@@ -1,4 +1,4 @@
-name: agegrid3
+name: agegrid
 channels:
   - conda-forge
 dependencies:
