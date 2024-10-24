@@ -1,8 +1,8 @@
 import os
 from . import automatic_age_grid_seeding as aags
 
-def run_paleo_age_grids(model_name, model_dir, temp_dir, logger, max_time, min_time, time_step, sampling, 
-                        xmin, xmax, ymin, ymax, num_cpus):
+def run_paleo_age_grids(model_name, model_dir, temp_dir, logger, max_time, min_time, time_step,
+                        sampling, xmin, xmax, ymin, ymax, num_cpus, spreading_rate):
     ##########################################################
     # Set the input parameters 
 
@@ -46,7 +46,7 @@ def run_paleo_age_grids(model_name, model_dir, temp_dir, logger, max_time, min_t
     
     # Other
     backend = 'v2'
-    initial_ocean_mean_spreading_rate = 75.
+    initial_ocean_mean_spreading_rate = spreading_rate
     subduction_collision_parameters = (5.0, 10.0)
     ###################################################
     # Run the algorithm
