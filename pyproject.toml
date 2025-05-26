@@ -4,13 +4,16 @@
 
 [project]
   name = "paleo-age-grids"
-  version = "1.0.2"
+  version = "1.0.3"
   dependencies = [
     "numpy",
     "xarray",
     "scikit-image",
     "astropy-healpix",
-    "pygmt"
+    "pygmt",
+    "pygplates",
+    "PlateTectonicTools",
+    "joblib"
   ]
   requires-python = ">=3.8"
   authors = [
