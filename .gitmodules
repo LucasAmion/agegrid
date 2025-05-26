@@ -1,3 +1,0 @@
-[submodule "src/GPlatesReconstructionModel"]
-	path = src/GPlatesReconstructionModel
-	url = git@github.com:siwill22/GPlatesReconstructionModel.git
