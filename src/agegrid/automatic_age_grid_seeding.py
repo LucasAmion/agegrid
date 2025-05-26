@@ -7,7 +7,7 @@ from joblib import Parallel, delayed
 import tempfile
 import pygmt
 
-import ..GPlatesReconstructionModel.gprm.utils.paleogeography as pg
+from ..GPlatesReconstructionModel.gprm.utils import paleogeography as pg
 from ..GPlatesReconstructionModel.gprm.utils.spatial import get_merged_cob_terrane_polygons, get_merged_cob_terrane_raster
 from ..GPlatesReconstructionModel.gprm.utils.fileio import write_xyz_file
 
