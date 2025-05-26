@@ -3,8 +3,8 @@
   build-backend = "setuptools.build_meta"
 
 [project]
-  name = "agegrid"
-  version = "2024.0.0"
+  name = "paleo-age-grids"
+  version = "1.0.1"
   dependencies = [
     "numpy",
     "xarray",
@@ -22,3 +22,6 @@
   description = "Code for reconstructing seafloor age distributions from GPlates full-plate tectonic reconstructions."
   readme = "README.md"
   license = {file = "LICENSE"}
+
+[project.urls]
+  "Source Code" = "https://github.com/LucasAmion/agegrid"
