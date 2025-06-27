@@ -7,9 +7,9 @@ def run_paleo_age_grids(model_name, model_dir, temp_dir, logger, max_time, min_t
     # Set the input parameters 
 
     # Input files
-    input_rotation_filenames = get_layer_files(model_dir, model_name, 'Rotations')
-    topology_features = get_layer_files(model_dir, model_name, 'Topologies')
-    COBterrane_file = get_layer_files(model_dir, model_name, 'COBs')[0]
+    input_rotation_filenames = get_layer_files(model_dir, 'Rotations')
+    topology_features = get_layer_files(model_dir, 'Topologies')
+    COBterrane_file = get_layer_files(model_dir, 'COBs')[0]
     
     # Output files
     output_gridfile_template = f'{model_name}_seafloor_age_'
@@ -81,8 +81,8 @@ def run_paleo_age_grids(model_name, model_dir, temp_dir, logger, max_time, min_t
                                             num_cpus=num_cpus, COBterrane_file=COBterrane_file)
     logger.progress += 10
 
-def get_layer_files(model_dir, model_name, layer_name):
-    dir =  f'{model_dir}/{model_name}/{layer_name}'
+def get_layer_files(model_dir, layer_name):
+    dir =  f'{model_dir}/{layer_name}'
     files = os.listdir(dir)
     files.remove('.metadata.json')
     return [f'{dir}/{filename}' for filename in files]
