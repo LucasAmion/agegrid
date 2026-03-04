@@ -30,3 +30,5 @@ config_r32_C2020.yaml
 config_r32_China.yaml
 config_r32_China_C591.yaml
 Atlantis2/
+*.egg-info
+build/
