@@ -30,5 +30,10 @@
 [tool.setuptools_scm]
   version_file = "src/agegrid/_version.py"
 
+[dependency-groups]
+dev = [
+    "build>=1.2.2.post1",
+]
+
 [project.urls]
   "Source Code" = "https://github.com/LucasAmion/agegrid"
