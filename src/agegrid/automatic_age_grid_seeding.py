@@ -4,11 +4,10 @@ import os
 import xarray as xr
 from joblib import Parallel, delayed
 from scipy.spatial import cKDTree
-from scipy.interpolate import RBFInterpolator
 
 from .utils import rasterise_paleogeography, find_distance_to_nearest_ridge
 from .utils import get_merged_cob_terrane_polygons, get_merged_cob_terrane_raster
-from .utils import write_xyz_file, lonlat_to_xyz, create_point_feature, block_median_2d
+from .utils import write_xyz_file, lonlat_to_xyz, create_point_feature, block_median_2d, spherical_interpolation
 
 from . import reconstruct_by_topologies as rbt
 
@@ -561,19 +560,16 @@ def make_grid_for_reconstruction_time(raw_point_file, age_grid_time, grdspace, r
     # Block median: bin points into cells of size grdspace and take median per cell
     bm_lons, bm_lats, bm_vals = block_median_2d(lons, lats, vals, grdspace, region)
 
-    # Spherical interpolation using RBFInterpolator on 3D unit-sphere coordinates
-    bm_xyz = lonlat_to_xyz(bm_lons, bm_lats)
-
-    rbf = RBFInterpolator(bm_xyz, bm_vals, kernel='thin_plate_spline')
-
-    # Build the output grid
+    # Spherical Delaunay interpolation using the convex hull of unit-sphere
+    # points — this is the same algorithm GMT sphinterpolate uses (STRIPACK).
+    # The convex hull of points on a sphere equals the spherical Delaunay
+    # triangulation.  Barycentric interpolation within each triangle preserves
+    # sharp edges and guarantees full coverage with no NaN cells.
     grid_lons = np.arange(xmin, xmax + grdspace, grdspace)
     grid_lats = np.arange(ymin, ymax + grdspace, grdspace)
-    mesh_lons, mesh_lats = np.meshgrid(grid_lons, grid_lats)
-    grid_xyz = lonlat_to_xyz(mesh_lons.ravel(), mesh_lats.ravel())
 
-    # Interpolate onto the output grid
-    grid_vals = rbf(grid_xyz).reshape(mesh_lats.shape)
+    grid_vals = spherical_interpolation(bm_lons, bm_lats, bm_vals,
+                                        grid_lons, grid_lats)
 
     # Write to NetCDF
     ds = xr.DataArray(grid_vals, coords=[('y', grid_lats), ('x', grid_lons)], name='z')

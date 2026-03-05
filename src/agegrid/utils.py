@@ -21,6 +21,104 @@ def lonlat_to_xyz(lons, lats):
                             np.sin(lats_rad)])
 
 
+def spherical_interpolation(data_lons, data_lats, data_vals, grid_lons, grid_lats):
+    """
+    Interpolate scattered data on the sphere using a true spherical Delaunay
+    triangulation (convex hull of unit-sphere points), matching the behaviour
+    of GMT sphinterpolate.
+
+    For each output grid point the enclosing spherical triangle is found and
+    the value is computed via barycentric interpolation of the triangle's
+    three vertex values.
+
+    :param data_lons: 1-D array of data longitudes (degrees)
+    :param data_lats: 1-D array of data latitudes  (degrees)
+    :param data_vals: 1-D array of data values
+    :param grid_lons: 1-D array of output grid longitudes (degrees)
+    :param grid_lats: 1-D array of output grid latitudes  (degrees)
+    :returns: 2-D array of shape (len(grid_lats), len(grid_lons))
+    """
+    from scipy.spatial import ConvexHull, cKDTree
+
+    # --- build spherical Delaunay triangulation ---
+    data_xyz = lonlat_to_xyz(data_lons, data_lats)
+    hull = ConvexHull(data_xyz)
+    simplices = hull.simplices  # (M, 3) triangle vertex indices
+
+    # --- precompute triangle normals and vertex arrays for barycentric test ---
+    v0 = data_xyz[simplices[:, 0]]
+    v1 = data_xyz[simplices[:, 1]]
+    v2 = data_xyz[simplices[:, 2]]
+
+    # triangle centroids (on sphere) for fast nearest-triangle lookup
+    centroids = (v0 + v1 + v2)
+    centroids /= np.linalg.norm(centroids, axis=1, keepdims=True)
+    tri_tree = cKDTree(centroids)
+
+    # --- query grid points ---
+    mesh_lons, mesh_lats = np.meshgrid(grid_lons, grid_lats)
+    query_xyz = lonlat_to_xyz(mesh_lons.ravel(), mesh_lats.ravel())
+    nq = query_xyz.shape[0]
+
+    # For each query point, find a set of candidate triangles (by centroid
+    # proximity) then test barycentric membership.
+    # We search enough candidates to virtually guarantee a hit.
+    k_candidates = min(8, len(simplices))
+    _, candidate_idx = tri_tree.query(query_xyz, k=k_candidates)
+    if candidate_idx.ndim == 1:
+        candidate_idx = candidate_idx[:, np.newaxis]
+
+    grid_vals = np.empty(nq, dtype=float)
+    grid_vals[:] = np.nan
+
+    for ci in range(k_candidates):
+        remaining = np.isnan(grid_vals)
+        if not remaining.any():
+            break
+        idx = np.where(remaining)[0]
+        tri_ids = candidate_idx[idx, ci]
+
+        a = data_xyz[simplices[tri_ids, 0]]
+        b = data_xyz[simplices[tri_ids, 1]]
+        c = data_xyz[simplices[tri_ids, 2]]
+        q = query_xyz[idx]
+
+        # Barycentric coordinates via cross-product areas
+        n_abc = np.cross(b - a, c - a)
+        area2 = np.einsum('ij,ij->i', n_abc, n_abc)
+        # avoid degenerate triangles
+        good = area2 > 1e-30
+
+        w0 = np.einsum('ij,ij->i', np.cross(b - q, c - q), n_abc)
+        w1 = np.einsum('ij,ij->i', np.cross(c - q, a - q), n_abc)
+        w2 = np.einsum('ij,ij->i', np.cross(a - q, b - q), n_abc)
+
+        w0[good] /= area2[good]
+        w1[good] /= area2[good]
+        w2[good] /= area2[good]
+
+        # A point is inside the triangle if all barycentric coords >= 0
+        # Use a small tolerance for floating-point precision
+        tol = -1e-6
+        inside = good & (w0 >= tol) & (w1 >= tol) & (w2 >= tol)
+
+        if inside.any():
+            ii = idx[inside]
+            ti = tri_ids[inside]
+            grid_vals[ii] = (w0[inside] * data_vals[simplices[ti, 0]] +
+                             w1[inside] * data_vals[simplices[ti, 1]] +
+                             w2[inside] * data_vals[simplices[ti, 2]])
+
+    # Fall back to nearest-neighbour for any remaining unresolved points
+    remaining = np.isnan(grid_vals)
+    if remaining.any():
+        data_tree = cKDTree(data_xyz)
+        _, nn_idx = data_tree.query(query_xyz[remaining])
+        grid_vals[remaining] = data_vals[nn_idx]
+
+    return grid_vals.reshape(mesh_lons.shape)
+
+
 ##################################################################
 # Continent grid utilities
 ##################################################################
@@ -80,8 +178,25 @@ def block_median_2d(lons, lats, vals, grdspace, region):
     from scipy.stats import binned_statistic_2d
 
     xmin, xmax, ymin, ymax = region
-    lon_edges = np.arange(xmin, xmax + 2 * grdspace, grdspace)
-    lat_edges = np.arange(ymin, ymax + 2 * grdspace, grdspace)
+
+    lons = np.asarray(lons, dtype=float)
+    lats = np.asarray(lats, dtype=float)
+    vals = np.asarray(vals, dtype=float)
+
+    # Wrap longitudes into [xmin, xmax) to handle the ±180° dateline correctly
+    lons = xmin + (lons - xmin) % (xmax - xmin)
+
+    # Build bin edges that exactly span the region (half-cell offset so cell
+    # centres align with GMT blockmedian convention)
+    lon_edges = np.arange(xmin, xmax + grdspace, grdspace)
+    lat_edges = np.arange(ymin, ymax + grdspace, grdspace)
+
+    # Clamp points on the upper boundary into the last bin so they are not
+    # silently dropped by binned_statistic_2d (which treats the last edge as
+    # exclusive except for the rightmost bin)
+    lons = np.clip(lons, lon_edges[0], lon_edges[-1] - 1e-10)
+    lats = np.clip(lats, lat_edges[0], lat_edges[-1] - 1e-10)
+
     stat_val, _, _, _ = binned_statistic_2d(
         lons, lats, vals, statistic='median', bins=[lon_edges, lat_edges])
     stat_lon, _, _, _ = binned_statistic_2d(
