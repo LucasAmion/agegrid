@@ -1,15 +1,13 @@
 import pygplates
 import numpy as np
 import os
-from ptt.utils.call_system_command import call_system_command
 import xarray as xr
 from joblib import Parallel, delayed
-import tempfile
-import pygmt
+from scipy.spatial import cKDTree
 
-import gprm.utils.paleogeography as pg
-from gprm.utils.spatial import get_merged_cob_terrane_polygons, get_merged_cob_terrane_raster
-from gprm.utils.fileio import write_xyz_file
+from .utils import rasterise_paleogeography, find_distance_to_nearest_ridge
+from .utils import get_merged_cob_terrane_polygons, get_merged_cob_terrane_raster
+from .utils import write_xyz_file, lonlat_to_xyz, create_point_feature, block_median_2d, spherical_interpolation
 
 from . import reconstruct_by_topologies as rbt
 
@@ -91,10 +89,9 @@ def get_isochrons_for_ridge_snapshot(topology_features,
     # Write out the ridge points born at 'ridge_time' but their position shifted by a small amount to allow cookie-cutting'.
     mor_point_features = []
     for curr_point in curr_points:
-        feature = pygplates.Feature()
-        feature.set_geometry(curr_point)
-        feature.set_valid_time(ridge_time, -999)  # delete - time_step
-        mor_point_features.append(feature)
+        mor_point_features.append(
+            create_point_feature(curr_point.to_lat_lon()[0], curr_point.to_lat_lon()[1],
+                                 ridge_time, -999))  # delete - time_step
     pygplates.FeatureCollection(mor_point_features).write('{:s}/MOR_plus_one_points_{:0.2f}.gmt'.format(out_dir, ridge_time))
     #
     print("... Finished writing seed points along the mid ocean ridge for {:0.2f} Ma".format(ridge_time))
@@ -172,7 +169,7 @@ def get_initial_ocean_seeds(topology_features, input_rotation_filenames, COBterr
     cobter = get_merged_cob_terrane_polygons(COBterrane_file, rotation_model,time,
                                              mask_sampling, area_threshold)
 
-    ocean_points = pg.rasterise_paleogeography(cobter, rotation_model,time,
+    ocean_points = rasterise_paleogeography(cobter, rotation_model,time,
                                                sampling=initial_ocean_healpix_sampling, meshtype='healpix',
                                                masking='Inside')
     #ocean_points = rasterise_polygons(cobter, rotation_model,time,
@@ -183,7 +180,7 @@ def get_initial_ocean_seeds(topology_features, input_rotation_filenames, COBterr
     shared_boundary_sections = []
     pygplates.resolve_topologies(topology_features, rotation_model, resolved_topologies, time, shared_boundary_sections)
 
-    pX,pY,pZ = pg.find_distance_to_nearest_ridge(resolved_topologies, shared_boundary_sections, ocean_points)
+    pX,pY,pZ = find_distance_to_nearest_ridge(resolved_topologies, shared_boundary_sections, ocean_points)
 
     # divide spreading rate by 2 to use half spreading rate
     pAge = np.array(pZ) / (initial_ocean_mean_spreading_rate/2.)
@@ -192,13 +189,10 @@ def get_initial_ocean_seeds(topology_features, input_rotation_filenames, COBterr
 
     for point in zip(pX,pY,pAge):
 
-        point_feature = pygplates.Feature()
-        point_feature.set_geometry(pygplates.PointOnSphere(point[1], point[0]))
-
         # note that we add 'time' to the age at the time of computation
         # to get the valid time in Ma
-        point_feature.set_valid_time(point[2]+time, -1)
-        initial_ocean_point_features.append(point_feature)
+        initial_ocean_point_features.append(
+            create_point_feature(point[1], point[0], point[2]+time, -1))
 
     pygplates.FeatureCollection(initial_ocean_point_features).write('{:s}/age_from_distance_to_mor_{:0.2f}Ma.gmt'.format(output_directory,time))
 
@@ -256,11 +250,10 @@ class ContinentCollision(pygplates.ReconstructedGeometryTimeSpan.DeactivatePoint
     def deactivate(self, prev_point, prev_location, prev_time, current_point, current_location, current_time):
         # Implement your deactivation algorithm here...
 
+        from .utils import load_continent_grid, point_on_continent
+
         # Load the grid for the current time if encountering a new time.
         if current_time != self.grid_time:
-            from scipy.interpolate import RegularGridInterpolator
-            from gprm.utils.fileio import load_netcdf
-
             self.grid_time = current_time
             
             # Load a grid that is based on the continent masks, assuming the detect_continents
@@ -268,15 +261,13 @@ class ContinentCollision(pygplates.ReconstructedGeometryTimeSpan.DeactivatePoint
             # The grid is sampled at each point, and in NaN retrurned, the point is set to inactive
             filename = '{:s}'.format(self.grd_filename_pattern.format(current_time))
             #print('Points masked against grid: {0}'.format(filename))
-            gridX,gridY,gridZ = load_netcdf(filename)
+            self.f = load_continent_grid(filename)
             self.continent_deletion_count = 0
-
-            self.f = RegularGridInterpolator((gridX,gridY), gridZ.T, method='nearest')
 
         # interpolate grid, which is one over continents and zero over oceans.
         # if value is >0.5 we deactivate
         #print curr_point
-        if self.f([current_point.to_lat_lon()[1], current_point.to_lat_lon()[0]])>0.5:
+        if point_on_continent(self.f, current_point):
             #print 'deactivating point within continent'
             self.continent_deletion_count += 1
             # Detected a collision.
@@ -320,7 +311,7 @@ def get_time_span(filename, topological_model, id_start, initial_time,
 def reconstruct_seeds(input_rotation_filenames, topology_features, seedpoints_output_dir,
                       mor_seedpoint_filename, initial_ocean_seedpoint_filename,
                       max_time, min_time, time_step, grd_output_dir,
-                      anchor_plate_id=0,
+                      anchor_plate_id=None,
                       subduction_collision_parameters=(5.0, 10.0), 
                       continent_mask_file_pattern=None,
                       backend='v2'):
@@ -350,13 +341,16 @@ def reconstruct_seeds(input_rotation_filenames, topology_features, seedpoints_ou
 def reconstruct_seeds_v2(input_rotation_filenames, topology_features, seedpoints_output_dir,
                       mor_seedpoint_filename, initial_ocean_seedpoint_filename,
                       max_time, min_time, time_step, grd_output_dir,
-                      anchor_plate_id=0,
+                      anchor_plate_id=None,
                       subduction_collision_parameters=(5.0, 10.0), 
                       continent_mask_file_pattern=None):
 
+    topological_model_kwargs = {}
+    if anchor_plate_id is not None:
+        topological_model_kwargs['anchor_plate_id'] = anchor_plate_id
     topological_model = pygplates.TopologicalModel(topology_features,
                                                    input_rotation_filenames,
-                                                   anchor_plate_id=anchor_plate_id)
+                                                   **topological_model_kwargs)
 
     # specify the collision detection
     default_collision = pygplates.ReconstructedGeometryTimeSpan.DefaultDeactivatePoints(
@@ -556,30 +550,35 @@ def make_grid_for_reconstruction_time(raw_point_file, age_grid_time, grdspace, r
     blockmedian and sphinterpolate
     """
 
-    block_median_points = tempfile.NamedTemporaryFile(delete=False)
-    block_median_points.close()  # Cannot open twice on Windows - close before opening again.
-    
-    region = '{:0.6f}/{:0.6f}/{:0.6f}/{:0.6f}'.format(*region)
+    # Load the raw point file and select lon, lat, and the value column
+    data = np.loadtxt(raw_point_file)
+    if data.size == 0:
+        return
+    lons = data[:, 0]
+    lats = data[:, 1]
+    vals = data[:, GridColumnFlag]
 
-    call_system_command(['gmt',
-                         'blockmedian',
-                         raw_point_file,
-                         '-I{0}d'.format(grdspace),
-                         '-R{0}'.format(region),
-                         '-V',
-                         '-i0,1,{0}'.format(GridColumnFlag),
-                         '>',
-                         block_median_points.name])
+    xmin, xmax, ymin, ymax = region
 
-    call_system_command(['gmt',
-                         'sphinterpolate',
-                         block_median_points.name,
-                         '-G{0}/unmasked/{1}{2}Ma.nc'.format(output_dir, output_filename_template, age_grid_time),
-                         '-I{0}d'.format(grdspace),
-                         '-R{0}'.format(region),
-                         '-V'])
+    # Block median: bin points into cells of size grdspace and take median per cell
+    bm_lons, bm_lats, bm_vals = block_median_2d(lons, lats, vals, grdspace, region)
 
-    os.unlink(block_median_points.name)  # Remove temp file (because we set 'delete=False').
+    # Spherical Delaunay interpolation using the convex hull of unit-sphere
+    # points — this is the same algorithm GMT sphinterpolate uses (STRIPACK).
+    # The convex hull of points on a sphere equals the spherical Delaunay
+    # triangulation.  Barycentric interpolation within each triangle preserves
+    # sharp edges and guarantees full coverage with no NaN cells.
+    grid_lons = np.arange(xmin, xmax + grdspace, grdspace)
+    grid_lats = np.arange(ymin, ymax + grdspace, grdspace)
+
+    grid_vals = spherical_interpolation(bm_lons, bm_lats, bm_vals,
+                                        grid_lons, grid_lats)
+
+    # Write to NetCDF
+    ds = xr.DataArray(grid_vals, coords=[('y', grid_lats), ('x', grid_lons)], name='z')
+    ds.to_netcdf('{0}/unmasked/{1}{2}Ma.nc'.format(output_dir, output_filename_template, age_grid_time),
+                 format='NETCDF4_CLASSIC')
+    ds.close()
 
 
 def write_synthetic_points(all_longitudes, all_latitudes, all_birth_ages, all_reconstruction_ages,
@@ -610,47 +609,40 @@ def mask_synthetic_points(reconstructed_present_day_lons, reconstructed_present_
     # --> apply the mask to remove the overlapping points
     # --> concatentate the remaining synthetic points with the reconstructed present-day age grid points
 
-    reconstructed_present_day_age_file = tempfile.NamedTemporaryFile(delete=False)
-    synthetic_age_masked_file = tempfile.NamedTemporaryFile(delete=False)
-    masking_grid_file = tempfile.NamedTemporaryFile(delete=False)
+    reconstructed_present_day_lons = np.asarray(reconstructed_present_day_lons)
+    reconstructed_present_day_lats = np.asarray(reconstructed_present_day_lats)
+    reconstructed_present_day_ages = np.asarray(reconstructed_present_day_ages)
 
-    # Cannot open twice on Windows - close before opening again.
-    reconstructed_present_day_age_file.close()
-    synthetic_age_masked_file.close()
-    masking_grid_file.close()
+    # Build cKDTree from reconstructed present-day points (3D Cartesian on unit sphere)
+    rpd_xyz = lonlat_to_xyz(reconstructed_present_day_lons, reconstructed_present_day_lats)
+    tree = cKDTree(rpd_xyz)
 
-    write_xyz_file(reconstructed_present_day_age_file.name, zip(reconstructed_present_day_lons,
-                                                                reconstructed_present_day_lats,
-                                                                reconstructed_present_day_ages))
+    # Chord distance on unit sphere corresponding to buffer_distance_degrees
+    buffer_chord = 2.0 * np.sin(np.radians(buffer_distance_degrees) / 2.0)
 
-    call_system_command(['gmt',
-                         'grdmask',
-                         reconstructed_present_day_age_file.name,
-                         '-G%s' % masking_grid_file.name,
-                         '-I{0}d'.format(grdspace),
-                         '-R{0}'.format(region),
-                         '-S%0.6fd' % buffer_distance_degrees,
-                         '-V'])
+    # Load synthetic points and keep only those outside the buffer zone
+    synthetic_data = np.loadtxt(raw_point_file.name)
+    if synthetic_data.size > 0:
+        if synthetic_data.ndim == 1:
+            synthetic_data = synthetic_data.reshape(1, -1)
+        syn_xyz = lonlat_to_xyz(synthetic_data[:, 0], synthetic_data[:, 1])
+        dist, _ = tree.query(syn_xyz)
+        outside_mask = dist > buffer_chord
+        filtered_synthetic = synthetic_data[outside_mask]
+    else:
+        filtered_synthetic = np.empty((0, 3))
 
-    call_system_command(['gmt',
-                         'gmtselect',
-                         raw_point_file.name,
-                         '-G%s' % masking_grid_file.name,
-                         '-Ig',
-                         '>',
-                         synthetic_age_masked_file.name])
+    # concatenate filtered synthetic points with reconstructed present-day age grid points
+    rpd_data = np.column_stack([reconstructed_present_day_lons,
+                                reconstructed_present_day_lats,
+                                reconstructed_present_day_ages])
 
-    # concatenate the files in a cross-platform way - overwriting the file that contains unmasked synthetic points
-    with open(raw_point_file.name, 'w') as outfile:
-        for fname in [synthetic_age_masked_file.name,reconstructed_present_day_age_file.name]:
-            with open(fname) as infile:
-                for line in infile:
-                    outfile.write(line)
+    if filtered_synthetic.size > 0:
+        combined = np.vstack([filtered_synthetic, rpd_data])
+    else:
+        combined = rpd_data
 
-    # Remove temp file (because we set 'delete=False').
-    os.unlink(reconstructed_present_day_age_file.name)
-    os.unlink(synthetic_age_masked_file.name)
-    os.unlink(masking_grid_file.name)
+    write_xyz_file(raw_point_file.name, combined.tolist())
 
 
 def make_masking_grids(COBterrane_file, input_rotation_filenames, max_time, min_time, time_step,
@@ -739,8 +731,9 @@ def masking_job(reconstruction_time, region,
     if np.array_equal(region, [-180, 180, -90, 90]):
         mask = xr.open_dataarray('{0}/masks/mask_{1}Ma.nc'.format(grd_output_dir, reconstruction_time))
     else:
-        mask = pygmt.grdsample('{0}/masks/mask_{1}Ma.nc'.format(grd_output_dir, reconstruction_time), 
-                               region=region)
+        xmin, xmax, ymin, ymax = region
+        mask = xr.open_dataarray('{0}/masks/mask_{1}Ma.nc'.format(grd_output_dir, reconstruction_time))
+        mask = mask.sel(x=slice(xmin, xmax), y=slice(ymin, ymax))
 
     ds = xr.open_dataarray('{0}/unmasked/{1}{2}Ma.nc'.format(grd_output_dir, output_gridfile_template, reconstruction_time))
 

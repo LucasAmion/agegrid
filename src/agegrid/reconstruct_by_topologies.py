@@ -268,10 +268,7 @@ class ContinentCollision(object):
         chained collision detection if 'self.chain_collision_detection' is not None.
         """
 
-        # Import locally so that we only get import errors if we use this class (and don't have the required dependencies).
-        # Not sure if importing locally like this will slow down executation a lot ?
-        from scipy.interpolate import RegularGridInterpolator
-        from gprm.utils.fileio import load_netcdf
+        from .utils import load_continent_grid, point_on_continent
 
         # Load the grid for the current time if encountering a new time.
         if time != self.grid_time:
@@ -282,15 +279,13 @@ class ContinentCollision(object):
             # The grid is sampled at each point, and in NaN retrurned, the point is set to inactive
             filename = '{:s}'.format(self.grd_output_dir.format(time))
             print('Points masked against grid: {0}'.format(filename))
-            gridX,gridY,gridZ = load_netcdf(filename)
+            self.f = load_continent_grid(filename)
             self.continent_deletion_count = 0
-
-            self.f = RegularGridInterpolator((gridX,gridY), gridZ.T, method='nearest')
 
         # interpolate grid, which is one over continents and zero over oceans.
         # if value is >0.5 we deactivate
         #print curr_point
-        if self.f([curr_point.to_lat_lon()[1], curr_point.to_lat_lon()[0]])>0.5:
+        if point_on_continent(self.f, curr_point):
             #print 'deactivating point within continent'
             self.continent_deletion_count += 1
             # Detected a collision.
