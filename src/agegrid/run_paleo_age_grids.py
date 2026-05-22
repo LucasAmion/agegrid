@@ -2,7 +2,8 @@ import os
 from . import automatic_age_grid_seeding as aags
 
 def run_paleo_age_grids(model_name, model_dir, temp_dir, logger, max_time, min_time, time_step,
-                        sampling, xmin, xmax, ymin, ymax, num_cpus, spreading_rate):
+                        sampling, xmin, xmax, ymin, ymax, num_cpus, spreading_rate,
+                        anchor_plate_id=None):
     ##########################################################
     # Set the input parameters 
 
@@ -71,6 +72,7 @@ def run_paleo_age_grids(model_name, model_dir, temp_dir, logger, max_time, min_t
     aags.reconstruct_seeds(input_rotation_filenames, topology_features, seedpoints_output_dir,
                         mor_seedpoint_filename, initial_ocean_seedpoint_filename,
                         max_time, min_time, gridding_time_step, grd_output_dir,
+                        anchor_plate_id=anchor_plate_id,
                         subduction_collision_parameters=subduction_collision_parameters,
                         continent_mask_file_pattern=continent_mask_file_pattern, backend=backend)
     logger.progress += 10

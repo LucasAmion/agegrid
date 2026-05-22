@@ -311,7 +311,7 @@ def get_time_span(filename, topological_model, id_start, initial_time,
 def reconstruct_seeds(input_rotation_filenames, topology_features, seedpoints_output_dir,
                       mor_seedpoint_filename, initial_ocean_seedpoint_filename,
                       max_time, min_time, time_step, grd_output_dir,
-                      anchor_plate_id=0,
+                      anchor_plate_id=None,
                       subduction_collision_parameters=(5.0, 10.0), 
                       continent_mask_file_pattern=None,
                       backend='v2'):
@@ -341,13 +341,16 @@ def reconstruct_seeds(input_rotation_filenames, topology_features, seedpoints_ou
 def reconstruct_seeds_v2(input_rotation_filenames, topology_features, seedpoints_output_dir,
                       mor_seedpoint_filename, initial_ocean_seedpoint_filename,
                       max_time, min_time, time_step, grd_output_dir,
-                      anchor_plate_id=0,
+                      anchor_plate_id=None,
                       subduction_collision_parameters=(5.0, 10.0), 
                       continent_mask_file_pattern=None):
 
+    topological_model_kwargs = {}
+    if anchor_plate_id is not None:
+        topological_model_kwargs['anchor_plate_id'] = anchor_plate_id
     topological_model = pygplates.TopologicalModel(topology_features,
                                                    input_rotation_filenames,
-                                                   anchor_plate_id=anchor_plate_id)
+                                                   **topological_model_kwargs)
 
     # specify the collision detection
     default_collision = pygplates.ReconstructedGeometryTimeSpan.DefaultDeactivatePoints(
