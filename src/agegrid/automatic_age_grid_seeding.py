@@ -64,13 +64,17 @@ def get_isochrons_for_ridge_snapshot(topology_features,
                                      ridge_time,
                                      time_step,
                                      youngest_seed_time=0,
-                                     ridge_sampling=2.
+                                     ridge_sampling=2.,
+                                     anchor_plate_id=None
                                     ):
     print("... Writing seed points along a ridge")
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
 
-    rotation_model = pygplates.RotationModel(rotation_filename)
+    rotation_model_kwargs = {}
+    if anchor_plate_id is not None:
+        rotation_model_kwargs['default_anchor_plate_id'] = anchor_plate_id
+    rotation_model = pygplates.RotationModel(rotation_filename, **rotation_model_kwargs)
 
     oldest_seed_time = ridge_time
 
@@ -81,7 +85,11 @@ def get_isochrons_for_ridge_snapshot(topology_features,
     # The first step is to generate points along the ridge
     resolved_topologies = []
     shared_boundary_sections = []
-    pygplates.resolve_topologies(topology_features, rotation_filename, resolved_topologies, oldest_seed_time, shared_boundary_sections)
+    resolve_kwargs = {}
+    if anchor_plate_id is not None:
+        resolve_kwargs['anchor_plate_id'] = anchor_plate_id
+    pygplates.resolve_topologies(topology_features, rotation_model, resolved_topologies, oldest_seed_time, shared_boundary_sections,
+                                 **resolve_kwargs)
 
     # Previous points are on the MOR, current are moved by one time step off MOR.
     curr_points = get_mid_ocean_ridges(shared_boundary_sections, rotation_model, oldest_seed_time, ridge_sampling)
@@ -108,20 +116,23 @@ def get_isochrons_for_ridge_snapshot_parallel_pool_function(args):
 def get_isochrons_for_ridge_snapshot_parallel(topology_features, rotation_filename,
                                               out_dir, pool_ridge_time_list,
                                               time_step, youngest_seed_time=0.,
-                                              ridge_sampling=2, num_cpus=1):
+                                              ridge_sampling=2, num_cpus=1,
+                                              anchor_plate_id=None):
 
     if num_cpus==1:
         for pool_ridge_time in pool_ridge_time_list:
             get_isochrons_for_ridge_snapshot(topology_features, rotation_filename,
                                              out_dir, pool_ridge_time,
-                                             time_step, youngest_seed_time, ridge_sampling)
+                                             time_step, youngest_seed_time, ridge_sampling,
+                                             anchor_plate_id=anchor_plate_id)
         return
 
     else:
         Parallel(n_jobs=num_cpus, prefer="threads")(delayed(get_isochrons_for_ridge_snapshot) \
                                   (topology_features, rotation_filename,
                                    out_dir, pool_ridge_time,
-                                   time_step, youngest_seed_time, ridge_sampling)
+                                   time_step, youngest_seed_time, ridge_sampling,
+                                   anchor_plate_id)
                                   for pool_ridge_time in pool_ridge_time_list)
 
 
@@ -156,7 +167,7 @@ def merge_features(young_time, old_time, time_step, outdir, cleanup=False):
 
 def get_initial_ocean_seeds(topology_features, input_rotation_filenames, COBterrane_file, output_directory,
                             time, initial_ocean_mean_spreading_rate, initial_ocean_healpix_sampling,
-                            area_threshold, mask_sampling=0.5):
+                            area_threshold, mask_sampling=0.5, anchor_plate_id=None):
     # Get a set of points at the oldest time for a reconstruction sequence, such that the points
     # populate the ocean basins (defined using the COB Terrane polygons) and are assigned ages assuming
     # a uniform average spreading rate combined with the distance of each point to the nearest
@@ -164,7 +175,10 @@ def get_initial_ocean_seeds(topology_features, input_rotation_filenames, COBterr
 
     print('Begin creating seed points for initial ocean at reconstruction start time....')
 
-    rotation_model = pygplates.RotationModel(input_rotation_filenames)
+    rotation_model_kwargs = {}
+    if anchor_plate_id is not None:
+        rotation_model_kwargs['default_anchor_plate_id'] = anchor_plate_id
+    rotation_model = pygplates.RotationModel(input_rotation_filenames, **rotation_model_kwargs)
 
     cobter = get_merged_cob_terrane_polygons(COBterrane_file, rotation_model,time,
                                              mask_sampling, area_threshold)
@@ -178,7 +192,11 @@ def get_initial_ocean_seeds(topology_features, input_rotation_filenames, COBterr
 
     resolved_topologies = []
     shared_boundary_sections = []
-    pygplates.resolve_topologies(topology_features, rotation_model, resolved_topologies, time, shared_boundary_sections)
+    resolve_kwargs = {}
+    if anchor_plate_id is not None:
+        resolve_kwargs['anchor_plate_id'] = anchor_plate_id
+    pygplates.resolve_topologies(topology_features, rotation_model, resolved_topologies, time, shared_boundary_sections,
+                                 **resolve_kwargs)
 
     pX,pY,pZ = find_distance_to_nearest_ridge(resolved_topologies, shared_boundary_sections, ocean_points)
 
@@ -200,7 +218,8 @@ def get_initial_ocean_seeds(topology_features, input_rotation_filenames, COBterr
 
 
 def get_isochrons_from_topologies(topology_features, input_rotation_filenames, output_directory,
-                                  max_time, min_time, time_step, ridge_sampling, num_cpus):
+                                  max_time, min_time, time_step, ridge_sampling, num_cpus,
+                                  anchor_plate_id=None):
 
     print('Begin generating seed points along mid ocean ridges from {:0.2f} Ma to {:0.2f} Ma at {:0.2f}Myr increments....'.format(max_time, min_time, time_step))
 
@@ -219,7 +238,8 @@ def get_isochrons_from_topologies(topology_features, input_rotation_filenames, o
     get_isochrons_for_ridge_snapshot_parallel(topology_features, input_rotation_filenames,
                                               output_directory,
                                               pool_ridge_time_list, time_step,
-                                              youngest_seed_time, ridge_sampling, num_cpus)
+                                              youngest_seed_time, ridge_sampling, num_cpus,
+                                              anchor_plate_id=anchor_plate_id)
 
     # merge the GMT files from different time steps into a single file
     #print 'Merging seed points into one feature collection....'
@@ -432,7 +452,10 @@ def reconstruct_seeds_v1(input_rotation_filenames, topology_features, seedpoints
     # reconstruct the seed points using the reconstruct_by_topologies function
     # returns the result either as lists or dumps to an ascii file
 
-    rotation_model = pygplates.RotationModel(input_rotation_filenames)
+    rotation_model_kwargs = {}
+    if anchor_plate_id is not None:
+        rotation_model_kwargs['default_anchor_plate_id'] = anchor_plate_id
+    rotation_model = pygplates.RotationModel(input_rotation_filenames, **rotation_model_kwargs)
 
     print('Begin assembling seed points and reconstructing by topologies....')
 
@@ -647,14 +670,14 @@ def mask_synthetic_points(reconstructed_present_day_lons, reconstructed_present_
 
 def make_masking_grids(COBterrane_file, input_rotation_filenames, max_time, min_time, time_step,
                        grdspace, grd_output_dir, output_gridfile_template, 
-                       num_cpus=1):
+                       num_cpus=1, anchor_plate_id=None):
     # generate the binary masking grids to define which areas are oceanic and which continental
 
     time_list = np.arange(max_time, min_time-time_step, -time_step)
 
     Parallel(n_jobs=num_cpus, prefer="threads")(delayed(make_masks_job) \
                                 (reconstruction_time, COBterrane_file, input_rotation_filenames, 
-                                grdspace, grd_output_dir) \
+                                grdspace, grd_output_dir, anchor_plate_id) \
                                 for reconstruction_time in time_list)
 
 
@@ -749,9 +772,12 @@ def masking_job(reconstruction_time, region,
     return
 
 def make_masks_job(reconstruction_time, COBterrane_file, input_rotation_filenames,
-                   grdspace, grd_output_dir):
+                   grdspace, grd_output_dir, anchor_plate_id=None):
 
-    rotation_model = pygplates.RotationModel(input_rotation_filenames)
+    rotation_model_kwargs = {}
+    if anchor_plate_id is not None:
+        rotation_model_kwargs['default_anchor_plate_id'] = anchor_plate_id
+    rotation_model = pygplates.RotationModel(input_rotation_filenames, **rotation_model_kwargs)
     print('Masking for time {:0.2f} Ma'.format(reconstruction_time))
     mask = get_merged_cob_terrane_raster(COBterrane_file, rotation_model, reconstruction_time,
                                          grdspace, method='rasterio')
