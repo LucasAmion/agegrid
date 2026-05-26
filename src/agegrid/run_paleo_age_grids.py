@@ -54,18 +54,21 @@ def run_paleo_age_grids(model_name, model_dir, temp_dir, logger, max_time, min_t
     
     logger.info("Making masks...")
     aags.make_masking_grids(COBterrane_file, input_rotation_filenames, max_time, min_time, gridding_time_step,
-                            grdspace, grd_output_dir, output_gridfile_template, num_cpus)
+                            grdspace, grd_output_dir, output_gridfile_template, num_cpus,
+                            anchor_plate_id=anchor_plate_id)
     logger.progress += 10
     
     logger.info("Creating seed points for initial ocean at reconstruction start time...")
     aags.get_initial_ocean_seeds(topology_features, input_rotation_filenames, COBterrane_file, seedpoints_output_dir,
                                 max_time, initial_ocean_mean_spreading_rate, initial_ocean_healpix_sampling,
-                                area_threshold, mask_sampling=grdspace)
+                                area_threshold, mask_sampling=grdspace,
+                                anchor_plate_id=anchor_plate_id)
     logger.progress += 10
 
     logger.info("Generating seed points along mid ocean ridges...")
     aags.get_isochrons_from_topologies(topology_features, input_rotation_filenames, seedpoints_output_dir,
-                                    max_time, min_time, mor_time_step, ridge_sampling, num_cpus=num_cpus)
+                                    max_time, min_time, mor_time_step, ridge_sampling, num_cpus=num_cpus,
+                                    anchor_plate_id=anchor_plate_id)
     logger.progress += 10
     
     logger.info("Assembling seed points and reconstructing by topologies...")
